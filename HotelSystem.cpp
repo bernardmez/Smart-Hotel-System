@@ -3,6 +3,7 @@
 #include <fstream>
 #include <sstream>
 #include <iomanip>
+#include <cctype>
 #include <limits>
 #include <ctime>
 #include <cstring>
@@ -15,9 +16,66 @@ HotelSystem::HotelSystem() {
 HotelSystem::~HotelSystem() {
     saveData();
 }
+static bool isDigitsOnly(const std::string& s) {
+    if (s.empty()) return false;
+    for (unsigned char ch : s) {
+        if (!std::isdigit(ch)) return false;
+    }
+    return true;
+}
+
+static bool isValidName(const std::string& name) {
+    if (name.empty()) return false;
+
+    bool hasAlpha = false;
+    for (unsigned char ch : name) {
+        if (std::isalpha(ch)) {
+            hasAlpha = true;
+        }
+    }
+    // Must have at least one letter and not be all digits
+    if (!hasAlpha) return false;
+    if (isDigitsOnly(name)) return false;
+
+    return true;
+}
+
+static bool isValidEmail(const std::string& email) {
+    if (email.empty()) return false;
+    if (email.find(' ') != std::string::npos) return false;
+
+    auto atPos = email.find('@');
+    if (atPos == std::string::npos || atPos == 0 || atPos == email.size() - 1)
+        return false;
+
+    auto dotPos = email.find('.', atPos + 1);
+    if (dotPos == std::string::npos || dotPos == atPos + 1 || dotPos == email.size() - 1)
+        return false;
+
+    return true;
+}
+
+static bool isValidPhone(const std::string& phone) {
+    if (phone.empty()) return false;
+
+    std::size_t i = 0;
+    if (phone[0] == '+') {
+        if (phone.size() == 1) return false;
+        i = 1;
+    }
+
+    int digits = 0;
+    for (; i < phone.size(); ++i) {
+        unsigned char ch = phone[i];
+        if (!std::isdigit(ch)) return false;
+        ++digits;
+    }
+
+    // basic reasonable range
+    return digits >= 7 && digits <= 15;
+}
 
 void HotelSystem::initialize() {
-    // Create default rooms if none exist
     if (rooms.empty()) {
         rooms.push_back(Room(101, RoomType::SINGLE, 100.0));
         rooms.push_back(Room(102, RoomType::SINGLE, 100.0));
@@ -84,7 +142,7 @@ void HotelSystem::loadReservations() {
 void HotelSystem::loadRooms() {
     std::ifstream file(roomsFile);
     if (!file.is_open()) {
-        saveRooms(); // Save default rooms
+        saveRooms();
         return;
     }
     
@@ -100,6 +158,10 @@ void HotelSystem::loadRooms() {
 
 void HotelSystem::saveCustomers() {
     std::ofstream file(customersFile);
+    if (!file.is_open()) {
+        std::cerr << "Failed to open " << customersFile << " for writing.\n";
+        return;
+    }
     for (const auto& c : customers) {
         file << c.serialize() << "\n";
     }
@@ -108,6 +170,10 @@ void HotelSystem::saveCustomers() {
 
 void HotelSystem::saveReservations() {
     std::ofstream file(reservationsFile);
+    if (!file.is_open()) {
+        std::cerr << "Failed to open " << reservationsFile << " for writing.\n";
+        return;
+    }
     for (const auto& r : reservations) {
         file << r.serialize() << "\n";
     }
@@ -116,6 +182,10 @@ void HotelSystem::saveReservations() {
 
 void HotelSystem::saveRooms() {
     std::ofstream file(roomsFile);
+    if (!file.is_open()) {
+        std::cerr << "Failed to open " << roomsFile << " for writing.\n";
+        return;
+    }
     for (const auto& r : rooms) {
         file << r.serialize() << "\n";
     }
@@ -150,6 +220,8 @@ time_t HotelSystem::createDateTime(int year, int month, int day, int hour, int m
     timeinfo.tm_mday = day;
     timeinfo.tm_hour = hour;
     timeinfo.tm_min = minute;
+    timeinfo.tm_sec = 0;
+    timeinfo.tm_isdst = -1;
     return mktime(&timeinfo);
 }
 
@@ -183,23 +255,53 @@ void HotelSystem::displayAdminMenu() {
     std::cout << "================================\n";
     std::cout << "Enter choice: ";
 }
-// Continuation of HotelSystem.cpp - Customer & Reservation Functions
+
 
 void HotelSystem::addCustomer() {
     std::string name, email, phone;
-    
+
     std::cout << "\n=== Add New Customer ===\n";
-    std::cin.ignore();
-    std::cout << "Name: ";
-    std::getline(std::cin, name);
-    std::cout << "Email: ";
-    std::getline(std::cin, email);
-    std::cout << "Phone: ";
-    std::getline(std::cin, phone);
-    
+    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+
+    // ----- Name -----
+    while (true) {
+        std::cout << "Name: ";
+        std::getline(std::cin, name);
+
+        if (!isValidName(name)) {
+            std::cout << "Invalid name. Name cannot be empty or digits-only and must contain letters.\n";
+            continue;
+        }
+        break;
+    }
+
+    // ----- Email -----
+    while (true) {
+        std::cout << "Email: ";
+        std::getline(std::cin, email);
+
+        if (!isValidEmail(email)) {
+            std::cout << "Invalid email format. Example: user@example.com\n";
+            continue;
+        }
+        break;
+    }
+
+    // ----- Phone -----
+    while (true) {
+        std::cout << "Phone: ";
+        std::getline(std::cin, phone);
+
+        if (!isValidPhone(phone)) {
+            std::cout << "Invalid phone number. Use digits only and make sure the length is bigger than 7!.\n";
+            continue;
+        }
+        break;
+    }
+
     Customer c(name, email, phone);
     customers.push_back(c);
-    
+
     std::cout << "\nCustomer added successfully! ID: " << c.getId() << "\n";
     saveCustomers();
 }
@@ -220,34 +322,53 @@ void HotelSystem::viewCustomers() {
 void HotelSystem::modifyCustomer() {
     int id;
     std::cout << "\nEnter Customer ID to modify: ";
-    
-    // Input validation for Customer ID
+
     if (!(std::cin >> id)) {
         std::cout << "Invalid input. Please enter a number.\n";
         std::cin.clear();
         std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
         return;
     }
-    
+
     Customer* c = findCustomer(id);
     if (!c) {
         std::cout << "Customer not found.\n";
         return;
     }
-    
-    std::cin.ignore();
+
+    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
     std::string name, email, phone;
-    std::cout << "New Name (current: " << c->getName() << "): ";
+
+    std::cout << "New Name (current: " << c->getName() << ", leave empty to keep): ";
     std::getline(std::cin, name);
-    std::cout << "New Email (current: " << c->getEmail() << "): ";
+    if (!name.empty()) {
+        if (!isValidName(name)) {
+            std::cout << "Invalid name. Keeping old name.\n";
+        } else {
+            c->setName(name);
+        }
+    }
+
+    std::cout << "New Email (current: " << c->getEmail() << ", leave empty to keep): ";
     std::getline(std::cin, email);
-    std::cout << "New Phone (current: " << c->getPhone() << "): ";
+    if (!email.empty()) {
+        if (!isValidEmail(email)) {
+            std::cout << "Invalid email. Keeping old email.\n";
+        } else {
+            c->setEmail(email);
+        }
+    }
+
+    std::cout << "New Phone (current: " << c->getPhone() << ", leave empty to keep): ";
     std::getline(std::cin, phone);
-    
-    if (!name.empty()) c->setName(name);
-    if (!email.empty()) c->setEmail(email);
-    if (!phone.empty()) c->setPhone(phone);
-    
+    if (!phone.empty()) {
+        if (!isValidPhone(phone)) {
+            std::cout << "Invalid phone. Keeping old phone.\n";
+        } else {
+            c->setPhone(phone);
+        }
+    }
+
     std::cout << "Customer updated successfully.\n";
     saveCustomers();
 }
@@ -256,7 +377,6 @@ void HotelSystem::deleteCustomer() {
     int id;
     std::cout << "\nEnter Customer ID to delete: ";
     
-    // Input validation for Customer ID
     if (!(std::cin >> id)) {
         std::cout << "Invalid input. Please enter a number.\n";
         std::cin.clear();
@@ -275,67 +395,154 @@ void HotelSystem::deleteCustomer() {
         std::cout << "Customer not found.\n";
     }
 }
+static std::string roomTypeToString(RoomType t) {
+    switch (t) {
+        case RoomType::SINGLE: return "Single";
+        case RoomType::DOUBLE: return "Double";
+        case RoomType::SUITE:  return "Suite";
+        case RoomType::DELUXE: return "Deluxe";
+        default:               return "Unknown";
+    }
+}
+bool isValidDate(int year, int month, int day, int hour) {
+    if (month < 1 || month > 12) return false;
+    if (hour < 0 || hour > 23) return false;
+
+    int daysInMonth[] = { 31,28,31,30,31,30,31,31,30,31,30,31 };
+
+    // Leap year check
+    bool leap = (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0));
+    if (month == 2 && leap)
+        daysInMonth[1] = 29;
+
+    if (day < 1 || day > daysInMonth[month - 1])
+        return false;
+
+    return true;
+}
 
 void HotelSystem::createReservation() {
     int customerId;
     std::cout << "\n=== Create New Reservation ===\n";
     std::cout << "Customer ID: ";
 
-    // Input validation for Customer ID
     if (!(std::cin >> customerId)) {
         std::cout << "Invalid input for Customer ID.\n";
         std::cin.clear();
         std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
         return;
     }
-    
+
     if (!findCustomer(customerId)) {
         std::cout << "Customer not found.\n";
         return;
     }
-    
-    int year, month, day, checkInHour, checkOutYear, checkOutMonth, checkOutDay, checkOutHour;
-    
+
+    // -------- NEW: choose room type ----------
+    int typeChoice;
+    RoomType desiredType;
+
+    while (true) {
+        std::cout << "Room Type (1. Single, 2. Double, 3. Suite, 4. Deluxe): ";
+        if (!(std::cin >> typeChoice)) {
+            std::cout << "Invalid input. Please enter a number.\n";
+            std::cin.clear();
+            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+            return;
+        }
+
+        if (typeChoice == 1) { desiredType = RoomType::SINGLE; break; }
+        if (typeChoice == 2) { desiredType = RoomType::DOUBLE; break; }
+        if (typeChoice == 3) { desiredType = RoomType::SUITE; break; }
+        if (typeChoice == 4) { desiredType = RoomType::DELUXE; break; }
+
+        std::cout << "Invalid choice. Please select 1–4.\n";
+    }
+
+    // Check if hotel actually HAS that room type
+    bool hasType = false;
+    for (const auto& room : rooms) {
+        if (room.getType() == desiredType) {
+            hasType = true;
+            break;
+        }
+    }
+
+    if (!hasType) {
+        std::cout << "Sorry, there are no rooms of this type.\n";
+        return;
+    }
+    // -----------------------------------------
+
+    int year, month, day, checkInHour;
+    int checkOutYear, checkOutMonth, checkOutDay, checkOutHour;
+
     std::cout << "Check-in Date (YYYY MM DD HH): ";
-    // Input validation for check-in date
     if (!(std::cin >> year >> month >> day >> checkInHour)) {
         std::cout << "Invalid input for check-in date/time.\n";
         std::cin.clear();
         std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
         return;
     }
-    
+
     std::cout << "Check-out Date (YYYY MM DD HH): ";
-    // Input validation for check-out date
     if (!(std::cin >> checkOutYear >> checkOutMonth >> checkOutDay >> checkOutHour)) {
         std::cout << "Invalid input for check-out date/time.\n";
         std::cin.clear();
         std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
         return;
     }
-    
+
+    if (!isValidDate(year, month, day, checkInHour)) {
+    std::cout << "Invalid check-in date. Please enter a valid date.\n";
+    return;
+    }
+    if (!isValidDate(checkOutYear, checkOutMonth, checkOutDay, checkOutHour)) {
+    std::cout << "Invalid check-out date. Please enter a valid date.\n";
+    return;
+    }
+
     time_t checkIn = createDateTime(year, month, day, checkInHour, 0);
     time_t checkOut = createDateTime(checkOutYear, checkOutMonth, checkOutDay, checkOutHour, 0);
-    
+
+    time_t now = time(nullptr);
+    if (checkIn < now) {
+        std::cout << "Check-in date/time cannot be earlier than the current date/time.\n";
+        return;
+    }
     if (checkOut <= checkIn) {
         std::cout << "Invalid dates: check-out must be after check-in.\n";
         return;
     }
-    
-    Reservation res(customerId, checkIn, checkOut);
-    reservations.push_back(res);
-    
-    // Try to schedule it
-    if (scheduler->scheduleReservation(res.getId())) {
-        std::cout << "\nReservation created and confirmed!\n";
-        std::cout << "Reservation ID: " << res.getId() << "\n";
-        std::cout << "Assigned Room: " << res.getAssignedRoomNumber() << "\n";
-        std::cout << "Total Cost: $" << res.getTotalCost() << "\n";
-    } else {
-        std::cout << "\nReservation created but no rooms available for these dates.\n";
-        std::cout << "Reservation ID: " << res.getId() << " (Status: Pending)\n";
+
+    // Create reservation inside vector
+    reservations.emplace_back(customerId, checkIn, checkOut);
+    Reservation& res = reservations.back();
+
+    // Try to assign room of selected type
+    bool scheduled = scheduler->scheduleReservation(res.getId(), desiredType);
+
+if (scheduled) {
+    std::cout << "\nReservation created and confirmed!\n";
+    std::cout << "Reservation ID: " << res.getId() << "\n";
+    std::cout << "Assigned Room: " << res.getAssignedRoomNumber() << "\n";
+
+    // Optional: show room type based on the assigned room
+    Room* room = findRoom(res.getAssignedRoomNumber());
+    if (room) {
+        std::cout << "Room Type: " << room->getTypeString() << "\n";
     }
-    
+
+    std::cout << "Duration: " << res.getDuration() << " night(s)\n";
+    std::cout << "Total Cost: $" << res.getTotalCost() << "\n";
+} else {
+    std::cout << "\nReservation created but no "
+              << roomTypeToString(desiredType)
+              << " rooms are available for these dates.\n";
+    std::cout << "Reservation ID: " << res.getId()
+              << " (Status: Pending)\n";
+}
+
     saveReservations();
     saveRooms();
 }
@@ -356,7 +563,6 @@ void HotelSystem::viewReservations() {
 void HotelSystem::cancelReservation() {
     int id;
     std::cout << "\nEnter Reservation ID to cancel: ";
-    // Input validation for Reservation ID
     if (!(std::cin >> id)) {
         std::cout << "Invalid input. Please enter a number.\n";
         std::cin.clear();
@@ -385,7 +591,6 @@ void HotelSystem::cancelReservation() {
 void HotelSystem::checkInReservation() {
     int id;
     std::cout << "\nEnter Reservation ID for check-in: ";
-    // Input validation for Reservation ID
     if (!(std::cin >> id)) {
         std::cout << "Invalid input. Please enter a number.\n";
         std::cin.clear();
@@ -414,7 +619,6 @@ void HotelSystem::checkInReservation() {
 void HotelSystem::checkOutReservation() {
     int id;
     std::cout << "\nEnter Reservation ID for check-out: ";
-    // Input validation for Reservation ID
     if (!(std::cin >> id)) {
         std::cout << "Invalid input. Please enter a number.\n";
         std::cin.clear();
@@ -434,11 +638,11 @@ void HotelSystem::checkOutReservation() {
     }
     
     r->setStatus(ReservationStatus::CHECKED_OUT);
-    generateInvoice(id); // Updated call to use the ID directly
+    generateInvoice(id);
     
     saveReservations();
 }
-// Continuation of HotelSystem.cpp - Additional Functions
+
 
 void HotelSystem::viewRooms() {
     std::cout << "\n========== ALL ROOMS ==========\n";
@@ -451,7 +655,6 @@ void HotelSystem::viewRooms() {
 void HotelSystem::viewRoomSchedule() {
     int roomNum;
     std::cout << "\nEnter Room Number: ";
-    // Input validation for Room Number
     if (!(std::cin >> roomNum)) {
         std::cout << "Invalid input. Please enter a number.\n";
         std::cin.clear();
@@ -462,9 +665,7 @@ void HotelSystem::viewRoomSchedule() {
     scheduler->displayRoomSchedule(roomNum);
 }
 
-// Adjusted to take reservation ID as argument
 void HotelSystem::generateInvoice(int id) {
-    
     Reservation* r = findReservation(id);
     if (!r) {
         std::cout << "Reservation not found.\n";
@@ -474,7 +675,6 @@ void HotelSystem::generateInvoice(int id) {
     Customer* c = findCustomer(r->getCustomerId());
     Room* room = findRoom(r->getAssignedRoomNumber());
 
-    // --- FIX: Store time values in local variables before taking their address ---
     time_t invoiceDate = r->getCheckOutTime();
     time_t checkInTime = r->getCheckInTime();
     time_t checkOutTime = r->getCheckOutTime();
@@ -483,7 +683,6 @@ void HotelSystem::generateInvoice(int id) {
     std::cout << "          SMART HOTEL - INVOICE                 \n";
     
     std::cout << "Invoice for Reservation #" << r->getId() << "\n";
-    // L483 FIX: Use &invoiceDate
     std::cout << "Date: " << std::put_time(std::localtime(&invoiceDate), "%Y-%m-%d") << "\n\n";
     
     std::cout << "Customer Details:\n";
@@ -494,9 +693,7 @@ void HotelSystem::generateInvoice(int id) {
     std::cout << "Stay Details:\n";
     std::cout << "  Room Number: " << r->getAssignedRoomNumber() << "\n";
     std::cout << "  Room Type: " << (room ? room->getTypeString() : "N/A") << "\n";
-    // L493 FIX: Use &checkInTime
     std::cout << "  Check-in: " << std::put_time(std::localtime(&checkInTime), "%Y-%m-%d %H:%M") << "\n";
-    // L494 FIX: Use &checkOutTime
     std::cout << "  Check-out: " << std::put_time(std::localtime(&checkOutTime), "%Y-%m-%d %H:%M") << "\n";
     std::cout << "  Duration: " << r->getDuration() << " night(s)\n\n";
     
@@ -545,7 +742,6 @@ void HotelSystem::viewOccupancyReport() {
     std::cout << "Occupancy Rate: " << std::fixed << std::setprecision(1) 
               << scheduler->getOccupancyRate() << "%\n\n";
     
-    // Active reservations
     int active = 0, pending = 0, checkedIn = 0, cancelled = 0;
     for (const auto& r : reservations) {
         switch (r.getStatus()) {
@@ -569,16 +765,16 @@ void HotelSystem::createBackup() {
     std::cout << "\nCreating backup...\n";
     
     std::ifstream src1(customersFile, std::ios::binary);
-    std::ofstream dst1("customers_backup.txt", std::ios::binary);
-    dst1 << src1.rdbuf();
+    std::ofstream dst1("customers_backup.json", std::ios::binary);
+    if (src1 && dst1) dst1 << src1.rdbuf();
     
     std::ifstream src2(reservationsFile, std::ios::binary);
-    std::ofstream dst2("reservations_backup.txt", std::ios::binary);
-    dst2 << src2.rdbuf();
+    std::ofstream dst2("reservations_backup.json", std::ios::binary);
+    if (src2 && dst2) dst2 << src2.rdbuf();
     
     std::ifstream src3(roomsFile, std::ios::binary);
-    std::ofstream dst3("rooms_backup.txt", std::ios::binary);
-    dst3 << src3.rdbuf();
+    std::ofstream dst3("rooms_backup.json", std::ios::binary);
+    if (src3 && dst3) dst3 << src3.rdbuf();
     
     std::cout << "Backup created successfully!\n";
 }
@@ -586,17 +782,17 @@ void HotelSystem::createBackup() {
 void HotelSystem::restoreBackup() {
     std::cout << "\nRestoring from backup...\n";
     
-    std::ifstream src1("customers_backup.txt", std::ios::binary);
+    std::ifstream src1("customers_backup.json", std::ios::binary);
     std::ofstream dst1(customersFile, std::ios::binary);
-    dst1 << src1.rdbuf();
+    if (src1 && dst1) dst1 << src1.rdbuf();
     
-    std::ifstream src2("reservations_backup.txt", std::ios::binary);
+    std::ifstream src2("reservations_backup.json", std::ios::binary);
     std::ofstream dst2(reservationsFile, std::ios::binary);
-    dst2 << src2.rdbuf();
+    if (src2 && dst2) dst2 << src2.rdbuf();
     
-    std::ifstream src3("rooms_backup.txt", std::ios::binary);
+    std::ifstream src3("rooms_backup.json", std::ios::binary);
     std::ofstream dst3(roomsFile, std::ios::binary);
-    dst3 << src3.rdbuf();
+    if (src3 && dst3) dst3 << src3.rdbuf();
     
     loadData();
     std::cout << "Backup restored successfully!\n";
@@ -605,24 +801,22 @@ void HotelSystem::restoreBackup() {
 void HotelSystem::rescheduleAll() {
     std::cout << "\nRescheduling all reservations...\n";
     
-    // Clear all room assignments
     for (auto& room : rooms) {
-        // Use a loop to clear reservations until the vector is empty
         while (!room.getReservationIds().empty()) {
-            room.removeReservation(room.getReservationIds()[0]);
+            int resId = room.getReservationIds().front();
+            room.removeReservation(resId);
         }
     }
     
-    // Reset all reservations to pending
     for (auto& res : reservations) {
         if (res.getStatus() != ReservationStatus::CANCELLED &&
             res.getStatus() != ReservationStatus::CHECKED_OUT) {
             res.setAssignedRoomNumber(-1);
             res.setStatus(ReservationStatus::PENDING);
+            res.setTotalCost(0.0);
         }
     }
     
-    // Reschedule using Left Edge Algorithm
     scheduler->scheduleReservations();
     
     std::cout << "Rescheduling complete!\n";
@@ -637,7 +831,6 @@ void HotelSystem::run() {
         if (isAdminLoggedIn) {
             displayAdminMenu();
             
-            // Fix 3: Input validation for Admin Menu choice
             if (!(std::cin >> choice)) {
                 std::cout << "Invalid input. Please enter a number.\n";
                 std::cin.clear();
@@ -656,7 +849,6 @@ void HotelSystem::run() {
         } else {
             displayMenu();
             
-            // Fix 3: Input validation for Main Menu choice
             if (!(std::cin >> choice)) {
                 std::cout << "Invalid input. Please enter a number.\n";
                 std::cin.clear();
@@ -687,7 +879,6 @@ void HotelSystem::run() {
         }
         
         std::cout << "\nPress Enter to continue...";
-        // This is a redundant cin.ignore, but kept for consistency with original flow
         std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); 
         std::cin.get();
     }

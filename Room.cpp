@@ -1,6 +1,33 @@
 #include "Room.h"
 #include <sstream>
 #include <algorithm>
+#include <cctype>
+
+namespace {
+    bool extractJsonNumber(const std::string& json, const std::string& key, long long& out) {
+        std::string pattern = "\"" + key + "\"";
+        size_t pos = json.find(pattern);
+        if (pos == std::string::npos) return false;
+        pos = json.find(':', pos);
+        if (pos == std::string::npos) return false;
+        ++pos;
+        while (pos < json.size() && std::isspace(static_cast<unsigned char>(json[pos]))) ++pos;
+        size_t end = pos;
+        while (end < json.size() &&
+               (std::isdigit(static_cast<unsigned char>(json[end])) ||
+                json[end] == '-' || json[end] == '+' ||
+                json[end] == '.' || json[end] == 'e' || json[end] == 'E')) {
+            ++end;
+        }
+        if (end == pos) return false;
+        try {
+            out = std::stoll(json.substr(pos, end - pos));
+        } catch (...) {
+            return false;
+        }
+        return true;
+    }
+}
 
 Room::Room() : roomNumber(0), type(RoomType::SINGLE), pricePerNight(0.0) {}
 
@@ -36,40 +63,80 @@ void Room::display() const {
 }
 
 std::string Room::serialize() const {
-    std::stringstream ss;
-    ss << roomNumber << "|" << static_cast<int>(type) << "|" << pricePerNight << "|";
-    
+    std::ostringstream ss;
+    ss << "{";
+    ss << "\"roomNumber\":" << roomNumber << ",";
+    ss << "\"type\":" << static_cast<int>(type) << ",";
+    ss << "\"pricePerNight\":" << pricePerNight << ",";
+    ss << "\"reservationIds\":[";
     for (size_t i = 0; i < reservationIds.size(); ++i) {
+        if (i > 0) ss << ",";
         ss << reservationIds[i];
-        if (i < reservationIds.size() - 1) ss << ",";
     }
-    
+    ss << "]";
+    ss << "}";
     return ss.str();
 }
 
 Room Room::deserialize(const std::string& data) {
-    std::stringstream ss(data);
-    std::string token;
-    std::vector<std::string> tokens;
-    
-    while (std::getline(ss, token, '|')) {
-        tokens.push_back(token);
-    }
-    
     Room room;
-    if (tokens.size() >= 3) {
-        room.roomNumber = std::stoi(tokens[0]);
-        room.type = static_cast<RoomType>(std::stoi(tokens[1]));
-        room.pricePerNight = std::stod(tokens[2]);
-        
-        if (tokens.size() > 3 && !tokens[3].empty()) {
-            std::stringstream resStream(tokens[3]);
-            std::string resId;
-            while (std::getline(resStream, resId, ',')) {
-                room.reservationIds.push_back(std::stoi(resId));
+    long long roomNum = 0;
+    long long typeVal = 0;
+    double priceVal = 0.0;
+
+    if (extractJsonNumber(data, "roomNumber", roomNum)) {
+        room.roomNumber = static_cast<int>(roomNum);
+    }
+    if (extractJsonNumber(data, "type", typeVal)) {
+        room.type = static_cast<RoomType>(static_cast<int>(typeVal));
+    }
+
+    {
+        std::string key = "\"pricePerNight\"";
+        size_t pos = data.find(key);
+        if (pos != std::string::npos) {
+            pos = data.find(':', pos);
+            if (pos != std::string::npos) {
+                ++pos;
+                while (pos < data.size() && std::isspace(static_cast<unsigned char>(data[pos]))) ++pos;
+                size_t end = pos;
+                while (end < data.size() &&
+                       (std::isdigit(static_cast<unsigned char>(data[end])) ||
+                        data[end] == '-' || data[end] == '+' ||
+                        data[end] == '.' || data[end] == 'e' || data[end] == 'E')) {
+                    ++end;
+                }
+                try {
+                    priceVal = std::stod(data.substr(pos, end - pos));
+                } catch (...) {
+                    priceVal = 0.0;
+                }
             }
         }
     }
-    
+    room.pricePerNight = priceVal;
+
+    std::string key = "\"reservationIds\"";
+    size_t pos = data.find(key);
+    if (pos != std::string::npos) {
+        pos = data.find('[', pos);
+        if (pos != std::string::npos) {
+            ++pos;
+            size_t end = data.find(']', pos);
+            if (end != std::string::npos && end > pos) {
+                std::string list = data.substr(pos, end - pos);
+                std::stringstream ss(list);
+                std::string item;
+                while (std::getline(ss, item, ',')) {
+                    try {
+                        int val = std::stoi(item);
+                        room.reservationIds.push_back(val);
+                    } catch (...) {
+                    }
+                }
+            }
+        }
+    }
+
     return room;
 }

@@ -17,21 +17,17 @@ public:
     Customer(const std::string& name, const std::string& email, const std::string& phone);
     Customer(int id, const std::string& name, const std::string& email, const std::string& phone);
     
-    // Getters
     int getId() const { return id; }
     std::string getName() const { return name; }
     std::string getEmail() const { return email; }
     std::string getPhone() const { return phone; }
     
-    // Setters
     void setName(const std::string& n) { name = n; }
     void setEmail(const std::string& e) { email = e; }
     void setPhone(const std::string& p) { phone = p; }
     
-    // Display
     void display() const;
     
-    // File I/O
     std::string serialize() const;
     static Customer deserialize(const std::string& data);
     static void setNextId(int id) { nextId = id; }

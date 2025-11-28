@@ -8,6 +8,8 @@
 #include <vector>
 #include <string>
 #include <memory>
+#include <ctime>
+
 
 class HotelSystem {
 private:
@@ -16,16 +18,14 @@ private:
     std::vector<Room> rooms;
     std::unique_ptr<Scheduler> scheduler;
     
-    std::string customersFile = "customers.txt";
-    std::string reservationsFile = "reservations.txt";
-    std::string roomsFile = "rooms.txt";
+    std::string customersFile = "customers.json";
+    std::string reservationsFile = "reservations.json";
+    std::string roomsFile = "rooms.json";
     
-    // Admin credentials
     std::string adminUsername = "admin";
     std::string adminPassword = "admin123";
     bool isAdminLoggedIn = false;
     
-    // File I/O
     void loadData();
     void saveData();
     void loadCustomers();
@@ -35,7 +35,6 @@ private:
     void saveReservations();
     void saveRooms();
     
-    // Helper functions
     Customer* findCustomer(int id);
     Reservation* findReservation(int id);
     Room* findRoom(int roomNumber);
@@ -47,38 +46,31 @@ public:
     HotelSystem();
     ~HotelSystem();
     
-    // Main system
     void run();
     void initialize();
     
-    // Customer management
     void addCustomer();
     void viewCustomers();
     void modifyCustomer();
     void deleteCustomer();
     
-    // Reservation management
     void createReservation();
     void viewReservations();
     void cancelReservation();
     void checkInReservation();
     void checkOutReservation();
     
-    // Room management
     void viewRooms();
     void viewRoomSchedule();
     
-    // Invoice
     void generateInvoice(int reservationId);
     
-    // Admin functions
     bool adminLogin();
     void adminLogout();
     void viewOccupancyReport();
     void createBackup();
     void restoreBackup();
     
-    // Scheduling
     void rescheduleAll();
 };
 
